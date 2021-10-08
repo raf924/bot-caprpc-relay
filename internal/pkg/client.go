@@ -75,7 +75,7 @@ func (c *capnpClient) connect() error {
 	return nil
 }
 
-func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domain.User, error) {
+func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
 	results, err := c.connector.Register(context.TODO(), func(params connector.Connector_register_Params) error {
 		registrationDTO, err := params.NewRegistration()
 		if err != nil {
@@ -91,10 +91,6 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 		return nil, err
 	}
 	confirmation, err := results.Confirmation()
-	if err != nil {
-		return nil, err
-	}
-	user, err := confirmation.BotUser()
 	if err != nil {
 		return nil, err
 	}
@@ -135,10 +131,10 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 			},
 		})(params)
 	})
-	return connector.MapDTOToUser(user), nil
+	return connector.MapDTOToConfirmationMessage(confirmation), nil
 }
 
-func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain.User, error) {
+func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
 	err := c.connect()
 	if err != nil {
 		return nil, err
