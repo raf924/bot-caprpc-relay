@@ -1,7 +1,7 @@
 package bot_caprpc_relay
 
 import (
-	"bot-caprpc-relay/internal/pkg"
+	"github.com/raf924/bot-caprpc-relay/internal/pkg"
 	"github.com/raf924/bot/pkg/relay/client"
 	"github.com/raf924/bot/pkg/relay/server"
 )

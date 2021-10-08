@@ -1,4 +1,4 @@
-module bot-caprpc-relay
+module github.com/raf924/bot-caprpc-relay
 
 go 1.17
 
