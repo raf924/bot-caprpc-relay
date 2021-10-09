@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/connector-api/pkg/connector"
+	"log"
 	capnp "zombiezen.com/go/capnproto2"
 )
 
@@ -49,7 +50,7 @@ func (c *connectorImpl) Send(send connector.Connector_send) error {
 }
 
 func (c *connectorImpl) sendMessage(message *domain.ChatMessage) error {
-	c.messageReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
+	_, err := c.messageReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
 		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 		if err != nil {
 			return err
@@ -66,8 +67,12 @@ func (c *connectorImpl) sendMessage(message *domain.ChatMessage) error {
 		if err != nil {
 			return err
 		}
+		log.Println("Sending message", message.Message())
 		return nil
-	})
+	}).Struct()
+	if err != nil {
+		return fmt.Errorf("cannot send message: %v", err)
+	}
 	return nil
 }
 
@@ -121,7 +126,7 @@ func (c *connectorImpl) MessageStream(stream connector.Connector_messageStream) 
 	if !stream.Params.HasReceiver() {
 		return fmt.Errorf("no receiver")
 	}
-	stream.Params.Receiver()
+	c.messageReceiver = stream.Params.Receiver()
 	return nil
 }
 
@@ -129,6 +134,7 @@ func (c *connectorImpl) CommandStream(stream connector.Connector_commandStream) 
 	if !stream.Params.HasReceiver() {
 		return fmt.Errorf("no receiver")
 	}
+	c.commandReceiver = stream.Params.Receiver()
 	return nil
 }
 
@@ -136,5 +142,6 @@ func (c *connectorImpl) EventStream(stream connector.Connector_eventStream) erro
 	if !stream.Params.HasReceiver() {
 		return fmt.Errorf("no receiver")
 	}
+	c.eventReceiver = stream.Params.Receiver()
 	return nil
 }

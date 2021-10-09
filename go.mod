@@ -3,8 +3,8 @@ module github.com/raf924/bot-caprpc-relay
 go 1.17
 
 require (
-	github.com/raf924/bot v1.0.0-alpha.28
-	github.com/raf924/connector-api v1.0.0-alpha.11
+	github.com/raf924/bot v1.0.0-alpha.30
+	github.com/raf924/connector-api v1.0.0-alpha.12
 	gopkg.in/yaml.v2 v2.4.0
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible
 )

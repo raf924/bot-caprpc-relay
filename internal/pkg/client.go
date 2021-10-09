@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/raf924/bot-caprpc-relay/pkg"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/bot/pkg/relay/client"
 	"github.com/raf924/connector-api/pkg/connector"
 	"gopkg.in/yaml.v2"
+	"log"
 	"net"
 	capnp "zombiezen.com/go/capnproto2"
 	"zombiezen.com/go/capnproto2/rpc"
@@ -16,7 +18,7 @@ import (
 var _ client.RelayClient = (*capnpClient)(nil)
 
 type capnpClient struct {
-	config      capnpClientConfig
+	config      pkg.CapnpClientConfig
 	connector   connector.Connector
 	messageChan chan domain.ServerMessage
 }
@@ -35,7 +37,7 @@ func (s *streamReceiver) Receive(receive connector.Connector_Receiver_receive) e
 	return nil
 }
 
-func newCapnpClient(config capnpClientConfig) *capnpClient {
+func newCapnpClient(config pkg.CapnpClientConfig) *capnpClient {
 	return &capnpClient{config: config}
 }
 
@@ -44,7 +46,7 @@ func NewCapnpClient(config interface{}) client.RelayClient {
 	if err != nil {
 		panic(err)
 	}
-	var conf capnpClientConfig
+	var conf pkg.CapnpClientConfig
 	if err := yaml.Unmarshal(data, &conf); err != nil {
 		panic(err)
 	}
@@ -119,18 +121,23 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 		return streamParamSetter(&streamReceiver{
 			messageChan: c.messageChan,
 			mapper: func(ptr capnp.Ptr) domain.ServerMessage {
-				return connector.MapDTOToChatMessage(connector.IncomingMessagePacket{Struct: ptr.Struct()})
+				message := connector.MapDTOToChatMessage(connector.IncomingMessagePacket{Struct: ptr.Struct()})
+				log.Println("Received:", message.Message())
+				return message
 			},
 		})(params)
 	})
-	c.connector.EventStream(context.TODO(), func(params connector.Connector_eventStream_Params) error {
+	_, err = c.connector.EventStream(context.TODO(), func(params connector.Connector_eventStream_Params) error {
 		return streamParamSetter(&streamReceiver{
 			messageChan: c.messageChan,
 			mapper: func(ptr capnp.Ptr) domain.ServerMessage {
 				return connector.MapDTOToUserEvent(connector.UserPacket{Struct: ptr.Struct()})
 			},
 		})(params)
-	})
+	}).Struct()
+	if err != nil {
+		return nil, err
+	}
 	return connector.MapDTOToConfirmationMessage(confirmation), nil
 }
 
@@ -139,7 +146,11 @@ func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain
 	if err != nil {
 		return nil, err
 	}
-	return c.register(registration)
+	confirmation, err := c.register(registration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register: %v", err)
+	}
+	return confirmation, nil
 }
 
 func (c *capnpClient) Send(packet *domain.ClientMessage) error {

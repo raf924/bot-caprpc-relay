@@ -3,6 +3,7 @@ package pkg
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/raf924/bot-caprpc-relay/pkg"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/bot/pkg/relay/server"
 	"github.com/raf924/connector-api/pkg/connector"
@@ -15,7 +16,7 @@ import (
 var _ server.RelayServer = (*capnpRelayServer)(nil)
 
 type capnpRelayServer struct {
-	config    capnpServerConfig
+	config    pkg.CapnpServerConfig
 	commands  domain.CommandList
 	botUser   *domain.User
 	conn      net.Conn
@@ -23,7 +24,7 @@ type capnpRelayServer struct {
 	connector *connectorImpl
 }
 
-func newCapnpRelayServer(config capnpServerConfig) *capnpRelayServer {
+func newCapnpRelayServer(config pkg.CapnpServerConfig) *capnpRelayServer {
 	return &capnpRelayServer{
 		config: config,
 		connector: &connectorImpl{
@@ -37,7 +38,7 @@ func NewCapnpRelayServer(config interface{}) server.RelayServer {
 	if err != nil {
 		panic(err)
 	}
-	var conf capnpServerConfig
+	var conf pkg.CapnpServerConfig
 	if err := yaml.Unmarshal(data, &conf); err != nil {
 		panic(err)
 	}
@@ -65,7 +66,7 @@ func (c *capnpRelayServer) start() error {
 	}
 	conn, err := listener.Accept()
 	if err != nil {
-		return nil
+		return err
 	}
 	go func() {
 		c.err = rpc.NewConn(rpc.StreamTransport(conn), rpc.MainInterface(connector.Connector_ServerToClient(c.connector).Client)).Wait()
@@ -87,7 +88,7 @@ func (c *capnpRelayServer) Start(botUser *domain.User, onlineUsers domain.UserLi
 			return err
 		}
 		c.commands = connector.MapDTOToCommandList(commands)
-		err = connector.CreateConfirmationPacket(botUser, onlineUsers.All(), &confirmation)
+		err = connector.CreateConfirmationPacket(botUser, trigger, onlineUsers.All(), &confirmation)
 		if err != nil {
 			return err
 		}
@@ -102,7 +103,7 @@ func (c *capnpRelayServer) Commands() domain.CommandList {
 
 func (c *capnpRelayServer) Send(message domain.ServerMessage) error {
 	if c.err != nil {
-		return c.err
+		return fmt.Errorf("cannot send: %v", c.err)
 	}
 	switch message := message.(type) {
 	case *domain.ChatMessage:

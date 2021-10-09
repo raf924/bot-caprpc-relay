@@ -1,6 +1,6 @@
 package pkg
 
-type capnpServerConfig struct {
+type CapnpServerConfig struct {
 	Port    int32  `yaml:"port"`
 	Timeout string `yaml:"timeout"`
 	TLS     struct {
@@ -12,7 +12,7 @@ type capnpServerConfig struct {
 	} `yaml:"tls"`
 }
 
-type capnpClientConfig struct {
+type CapnpClientConfig struct {
 	Host string `yaml:"host"`
 	Port int32  `yaml:"port"`
 	TLS  struct {
