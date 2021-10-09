@@ -26,7 +26,8 @@ type capnpRelayServer struct {
 
 func newCapnpRelayServer(config pkg.CapnpServerConfig) *capnpRelayServer {
 	return &capnpRelayServer{
-		config: config,
+		commands: domain.NewCommandList(),
+		config:   config,
 		connector: &connectorImpl{
 			outgoingMessageChan: make(chan *connector.OutgoingMessagePacket),
 		},
@@ -75,10 +76,6 @@ func (c *capnpRelayServer) start() error {
 }
 
 func (c *capnpRelayServer) Start(botUser *domain.User, onlineUsers domain.UserList, trigger string) error {
-	err := c.start()
-	if err != nil {
-		return err
-	}
 	c.connector.onRegistration = func(registration connector.RegistrationPacket, confirmation connector.ConfirmationPacket) error {
 		if c.err != nil {
 			return c.err
@@ -93,6 +90,10 @@ func (c *capnpRelayServer) Start(botUser *domain.User, onlineUsers domain.UserLi
 			return err
 		}
 		return nil
+	}
+	err := c.start()
+	if err != nil {
+		return err
 	}
 	return nil
 }
