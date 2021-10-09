@@ -77,7 +77,7 @@ func (c *connectorImpl) sendMessage(message *domain.ChatMessage) error {
 }
 
 func (c *connectorImpl) sendCommand(command *domain.CommandMessage) error {
-	c.commandReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
+	_, err := c.commandReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
 		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 		if err != nil {
 			return err
@@ -95,12 +95,15 @@ func (c *connectorImpl) sendCommand(command *domain.CommandMessage) error {
 			return err
 		}
 		return nil
-	})
+	}).Struct()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (c *connectorImpl) sendEvent(event *domain.UserEvent) error {
-	c.eventReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
+	_, err := c.eventReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
 		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 		if err != nil {
 			return err
@@ -118,7 +121,10 @@ func (c *connectorImpl) sendEvent(event *domain.UserEvent) error {
 			return err
 		}
 		return nil
-	})
+	}).Struct()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
