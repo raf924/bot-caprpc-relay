@@ -54,8 +54,7 @@ func (c *capnpRelayServer) start() error {
 		Port: int(c.config.Port),
 	})
 	if err != nil {
-		log.Println(err)
-		return nil
+		return err
 	}
 	if c.config.TLS.Enabled {
 		tlsConfig, err := LoadTLSServerConfig(c.config.TLS.Ca, c.config.TLS.Cert, c.config.TLS.Key)
@@ -65,13 +64,18 @@ func (c *capnpRelayServer) start() error {
 		}
 		listener = tls.NewListener(listener, tlsConfig)
 	}
-	conn, err := listener.Accept()
-	if err != nil {
-		return err
-	}
-	go func() {
-		<-rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Connector_ServerToClient(c.connector, nil).Client}).Done()
-	}()
+	go func(listener net.Listener) {
+		for true {
+			conn, err := listener.Accept()
+			if err != nil {
+				c.err = err
+				return
+			}
+			go func() {
+				<-rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Connector_ServerToClient(c.connector, nil).Client}).Done()
+			}()
+		}
+	}(listener)
 	return nil
 }
 
