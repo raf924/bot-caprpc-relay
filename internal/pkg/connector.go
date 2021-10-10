@@ -1,12 +1,11 @@
 package pkg
 
 import (
+	"capnproto.org/go/capnp/v3"
 	"context"
 	"fmt"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/connector-api/pkg/connector"
-	"log"
-	capnp "zombiezen.com/go/capnproto2"
 )
 
 type connectorImpl struct {
@@ -15,33 +14,43 @@ type connectorImpl struct {
 	messageReceiver     connector.Connector_Receiver
 	commandReceiver     connector.Connector_Receiver
 	eventReceiver       connector.Connector_Receiver
+	messageChan         chan *domain.ChatMessage
+	commandChan         chan *domain.CommandMessage
+	eventChan           chan *domain.UserEvent
 	outgoingMessageChan chan *connector.OutgoingMessagePacket
 	err                 error
 }
 
 func (c *connectorImpl) recv() (*connector.OutgoingMessagePacket, error) {
-	message, closed := <-c.outgoingMessageChan
-	if closed {
+	message, ok := <-c.outgoingMessageChan
+	if !ok {
 		c.err = fmt.Errorf("can't transmit messages")
 		return nil, c.err
 	}
 	return message, nil
 }
 
-func (c *connectorImpl) Register(register connector.Connector_register) error {
-	registration, err := register.Params.Registration()
+func (c *connectorImpl) Register(ctx context.Context, register connector.Connector_register) error {
+	registration, err := register.Args().Registration()
 	if err != nil {
 		return err
 	}
-	confirmation, err := register.Results.NewConfirmation()
+	results, err := register.AllocResults()
 	if err != nil {
 		return err
 	}
-	return c.onRegistration(registration, confirmation)
+	confirmation, err := results.NewConfirmation()
+	if err != nil {
+		return err
+	}
+	err = c.onRegistration(registration, confirmation)
+	register.Ack()
+	return err
 }
 
-func (c *connectorImpl) Send(send connector.Connector_send) error {
-	message, err := send.Params.Message()
+func (c *connectorImpl) Send(ctx context.Context, send connector.Connector_send) error {
+	send.Ack()
+	message, err := send.Args().Message()
 	if err != nil {
 		return err
 	}
@@ -49,105 +58,165 @@ func (c *connectorImpl) Send(send connector.Connector_send) error {
 	return nil
 }
 
-func (c *connectorImpl) sendMessage(message *domain.ChatMessage) error {
-	_, err := c.messageReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
+func (c *connectorImpl) sendMessage(message *domain.ChatMessage) {
+	c.messageChan <- message
+}
+
+func (c *connectorImpl) sendCommand(command *domain.CommandMessage) {
+	c.commandChan <- command
+}
+
+func (c *connectorImpl) sendEvent(event *domain.UserEvent) {
+	c.eventChan <- event
+}
+
+func (c *connectorImpl) sendToReceiver(ctx context.Context, message domain.ServerMessage, receiver connector.Connector_Receiver, mapper func(message domain.ServerMessage, segment *capnp.Segment) error) error {
+	receive, releaseFunc := receiver.Receive(ctx, func(params connector.Connector_Receiver_receive_Params) error {
 		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
 		if err != nil {
 			return err
 		}
-		packet, err := connector.NewRootIncomingMessagePacket(seg)
+		err = mapper(message, seg)
 		if err != nil {
 			return err
 		}
-		err = connector.MapChatMessageToDTO(message, &packet)
+		root, err := seg.Message().Root()
 		if err != nil {
 			return err
 		}
-		err = params.SetMessage(packet)
-		if err != nil {
-			return err
-		}
-		log.Println("Sending message", message.Message())
-		return nil
-	}).Struct()
-	if err != nil {
-		return fmt.Errorf("cannot send message: %v", err)
-	}
-	return nil
-}
-
-func (c *connectorImpl) sendCommand(command *domain.CommandMessage) error {
-	_, err := c.commandReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
-		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
-		if err != nil {
-			return err
-		}
-		packet, err := connector.NewRootCommandPacket(seg)
-		if err != nil {
-			return err
-		}
-		err = connector.MapCommandMessageToDTO(command, &packet)
-		if err != nil {
-			return err
-		}
-		err = params.SetMessage(packet)
+		err = params.SetMessage(root)
 		if err != nil {
 			return err
 		}
 		return nil
-	}).Struct()
-	if err != nil {
-		return err
-	}
-	return nil
+	})
+	_, err := receive.Struct()
+	releaseFunc()
+	return err
 }
 
-func (c *connectorImpl) sendEvent(event *domain.UserEvent) error {
-	_, err := c.eventReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
-		_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+func (c *connectorImpl) MessageStream(ctx context.Context, stream connector.Connector_messageStream) error {
+	stream.Ack()
+	if !stream.Args().HasReceiver() {
+		return fmt.Errorf("no receiver")
+	}
+	c.messageChan = make(chan *domain.ChatMessage)
+	mapper := func(message domain.ServerMessage, segment *capnp.Segment) error {
+		packet, err := connector.NewRootIncomingMessagePacket(segment)
 		if err != nil {
 			return err
 		}
-		packet, err := connector.NewRootUserPacket(seg)
-		if err != nil {
-			return err
-		}
-		err = connector.MapUserEventToDTO(event, &packet)
-		if err != nil {
-			return err
-		}
-		err = params.SetMessage(packet)
+		err = connector.MapChatMessageToDTO(message.(*domain.ChatMessage), &packet)
 		if err != nil {
 			return err
 		}
 		return nil
-	}).Struct()
-	if err != nil {
-		return err
+	}
+	messageReceiver := stream.Args().Receiver()
+	for c.err == nil {
+		var message domain.ServerMessage
+		var ok bool
+		select {
+		case message, ok = <-c.messageChan:
+			break
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if !ok {
+			c.err = fmt.Errorf("cannot transmit packets")
+			return c.err
+		}
+		err := c.sendToReceiver(ctx, message, messageReceiver, mapper)
+		if err != nil {
+			return err
+		}
+		stream.Ack()
+	}
+	return c.err
+}
+
+func (c *connectorImpl) CommandStream(ctx context.Context, stream connector.Connector_commandStream) error {
+	stream.Ack()
+	if !stream.Args().HasReceiver() {
+		return fmt.Errorf("no receiver")
+	}
+	c.commandChan = make(chan *domain.CommandMessage)
+	commandReceiver := stream.Args().Receiver()
+	for c.err == nil {
+		var command domain.ServerMessage
+		var ok bool
+		select {
+		case command, ok = <-c.commandChan:
+			break
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if !ok {
+			c.err = fmt.Errorf("cannot transmit packets")
+			return c.err
+		}
+		commandReceiver.Receive(ctx, func(params connector.Connector_Receiver_receive_Params) error {
+			_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+			if err != nil {
+				return err
+			}
+			packet, err := connector.NewRootCommandPacket(seg)
+			if err != nil {
+				return err
+			}
+			err = connector.MapCommandMessageToDTO(command.(*domain.CommandMessage), &packet)
+			if err != nil {
+				return err
+			}
+			err = params.SetMessage(packet.ToPtr())
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 	}
 	return nil
 }
 
-func (c *connectorImpl) MessageStream(stream connector.Connector_messageStream) error {
-	if !stream.Params.HasReceiver() {
+func (c *connectorImpl) EventStream(ctx context.Context, stream connector.Connector_eventStream) error {
+	stream.Ack()
+	if !stream.Args().HasReceiver() {
 		return fmt.Errorf("no receiver")
 	}
-	c.messageReceiver = stream.Params.Receiver()
-	return nil
-}
-
-func (c *connectorImpl) CommandStream(stream connector.Connector_commandStream) error {
-	if !stream.Params.HasReceiver() {
-		return fmt.Errorf("no receiver")
+	c.eventChan = make(chan *domain.UserEvent)
+	eventReceiver := stream.Args().Receiver()
+	for c.err == nil {
+		var event *domain.UserEvent
+		var ok bool
+		select {
+		case event, ok = <-c.eventChan:
+			break
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if !ok {
+			c.err = fmt.Errorf("cannot transmit packets")
+			return c.err
+		}
+		eventReceiver.Receive(context.TODO(), func(params connector.Connector_Receiver_receive_Params) error {
+			_, seg, err := capnp.NewMessage(capnp.SingleSegment(nil))
+			if err != nil {
+				return err
+			}
+			packet, err := connector.NewRootUserPacket(seg)
+			if err != nil {
+				return err
+			}
+			err = connector.MapUserEventToDTO(event, &packet)
+			if err != nil {
+				return err
+			}
+			err = params.SetMessage(packet.ToPtr())
+			if err != nil {
+				return err
+			}
+			return nil
+		})
 	}
-	c.commandReceiver = stream.Params.Receiver()
-	return nil
-}
-
-func (c *connectorImpl) EventStream(stream connector.Connector_eventStream) error {
-	if !stream.Params.HasReceiver() {
-		return fmt.Errorf("no receiver")
-	}
-	c.eventReceiver = stream.Params.Receiver()
-	return nil
+	return c.err
 }

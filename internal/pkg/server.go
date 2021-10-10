@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"capnproto.org/go/capnp/v3/rpc"
 	"crypto/tls"
 	"fmt"
 	"github.com/raf924/bot-caprpc-relay/pkg"
@@ -10,7 +11,6 @@ import (
 	"gopkg.in/yaml.v2"
 	"log"
 	"net"
-	"zombiezen.com/go/capnproto2/rpc"
 )
 
 var _ server.RelayServer = (*capnpRelayServer)(nil)
@@ -70,7 +70,7 @@ func (c *capnpRelayServer) start() error {
 		return err
 	}
 	go func() {
-		c.err = rpc.NewConn(rpc.StreamTransport(conn), rpc.MainInterface(connector.Connector_ServerToClient(c.connector).Client)).Wait()
+		<-rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Connector_ServerToClient(c.connector, nil).Client}).Done()
 	}()
 	return nil
 }
@@ -108,14 +108,15 @@ func (c *capnpRelayServer) Send(message domain.ServerMessage) error {
 	}
 	switch message := message.(type) {
 	case *domain.ChatMessage:
-		return c.connector.sendMessage(message)
+		c.connector.sendMessage(message)
 	case *domain.CommandMessage:
-		return c.connector.sendCommand(message)
+		c.connector.sendCommand(message)
 	case *domain.UserEvent:
-		return c.connector.sendEvent(message)
+		c.connector.sendEvent(message)
 	default:
 		return fmt.Errorf("unknown message type")
 	}
+	return nil
 }
 
 func (c *capnpRelayServer) Recv() (*domain.ClientMessage, error) {
