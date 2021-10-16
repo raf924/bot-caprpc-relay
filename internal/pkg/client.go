@@ -1,44 +1,41 @@
 package pkg
 
 import (
-	"capnproto.org/go/capnp/v3"
 	"capnproto.org/go/capnp/v3/rpc"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"github.com/raf924/bot-caprpc-relay/pkg"
 	"github.com/raf924/bot/pkg/domain"
+	"github.com/raf924/bot/pkg/queue"
 	"github.com/raf924/bot/pkg/relay/client"
 	"github.com/raf924/connector-api/pkg/connector"
 	"gopkg.in/yaml.v2"
 	"net"
+	"sync"
 )
 
 var _ client.RelayClient = (*capnpClient)(nil)
 
 type capnpClient struct {
-	config      pkg.CapnpClientConfig
-	connector   connector.Connector
-	messageChan chan domain.ServerMessage
+	config          pkg.CapnpClientConfig
+	connector       connector.Connector
+	messageConsumer *queue.Consumer
+	err             error
+	doneChan        chan struct{}
+	mu              *sync.Mutex
 }
 
-type streamReceiver struct {
-	messageChan chan domain.ServerMessage
-	mapper      func(ptr capnp.Ptr) domain.ServerMessage
+func (c *capnpClient) Done() <-chan struct{} {
+	return c.doneChan
 }
 
-func (s *streamReceiver) Receive(ctx context.Context, receive connector.Connector_Receiver_receive) error {
-	receive.Ack()
-	ptr, err := receive.Args().Message()
-	if err != nil {
-		return err
-	}
-	s.messageChan <- s.mapper(ptr)
-	return nil
+func (c *capnpClient) Err() error {
+	return c.err
 }
 
 func newCapnpClient(config pkg.CapnpClientConfig) *capnpClient {
-	return &capnpClient{config: config}
+	return &capnpClient{config: config, doneChan: make(chan struct{}, 1), mu: &sync.Mutex{}}
 }
 
 func NewCapnpClient(config interface{}) client.RelayClient {
@@ -72,7 +69,13 @@ func (c *capnpClient) connect() error {
 			return err
 		}
 	}
-	rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), nil)
+	messageQueue := queue.NewQueue()
+	producer, err := messageQueue.NewProducer()
+	if err != nil {
+		return err
+	}
+	c.messageConsumer, err = messageQueue.NewConsumer()
+	rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Dispatcher_ServerToClient(&dispatcher{messageProducer: producer}, nil).Client})
 	c.connector = connector.Connector{Client: rpcConn.Bootstrap(context.TODO())}
 	return nil
 }
@@ -89,7 +92,7 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 		}
 		return nil
 	})
-	mapConfirmation := func() (*domain.ConfirmationMessage, error) {
+	mapConfirmation := func(answer connector.Connector_register_Results_Future) (*domain.ConfirmationMessage, error) {
 		results, err := answer.Struct()
 		if err != nil {
 			return nil, err
@@ -100,34 +103,39 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 		}
 		return connector.MapDTOToConfirmationMessage(confirmation), nil
 	}
-	confirmation, err := mapConfirmation()
-	release()
+	confirmation, err := mapConfirmation(answer)
+	_ = release
 	return confirmation, err
 }
 
 func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
+	//log.Println("capnpClient", "Connect", "start")
 	err := c.connect()
 	if err != nil {
 		return nil, err
 	}
 	confirmation, err := c.register(registration)
 	if err != nil {
-		return nil, fmt.Errorf("failed to register: %v", err)
+		c.err = fmt.Errorf("failed to register: %v", err)
+		c.doneChan <- struct{}{}
+		return nil, c.err
 	}
-	c.createCommandStreams()
+	//log.Println("capnpClient", "Connect", "end")
 	return confirmation, nil
 }
 
 func (c *capnpClient) Send(packet *domain.ClientMessage) error {
+	//log.Println("capnpClient", "Send", "start")
 	answer, release := c.connector.Send(context.TODO(), func(params connector.Connector_send_Params) error {
 		message, err := params.NewMessage()
 		if err != nil {
 			return err
 		}
-		err = connector.MapClientMessageToDTO(packet, &message)
+		err = connector.MapClientMessageToDTO(packet, message)
 		if err != nil {
 			return err
 		}
+		//log.Println("capnpClient", "Send", "rpc", message.Private())
 		return nil
 	})
 	_, err := answer.Struct()
@@ -135,75 +143,16 @@ func (c *capnpClient) Send(packet *domain.ClientMessage) error {
 	if err != nil {
 		return err
 	}
+	//log.Println("capnpClient", "Send", "end")
 	return nil
 }
 
 func (c *capnpClient) Recv() (domain.ServerMessage, error) {
-	message, ok := <-c.messageChan
-	if !ok {
+	//log.Println("capnpClient", "Recv", "start")
+	message, err := c.messageConsumer.Consume()
+	if err != nil {
 		return nil, fmt.Errorf("cannot fetch server messages")
 	}
-	return message, nil
-}
-
-func (c *capnpClient) createCommandStreams() {
-	type receiverParams interface {
-		SetReceiver(receiver connector.Connector_Receiver) error
-	}
-	streamParamSetter := func(receiver connector.Connector_Receiver_Server) func(params receiverParams) error {
-		cb := connector.Connector_Receiver_ServerToClient(receiver, nil)
-		return func(params receiverParams) error {
-			err := params.SetReceiver(cb)
-			if err != nil {
-				return err
-			}
-			return nil
-		}
-	}
-	go func() {
-		answerCommand, release := c.connector.CommandStream(context.TODO(), func(params connector.Connector_commandStream_Params) error {
-			return streamParamSetter(&streamReceiver{
-				messageChan: c.messageChan,
-				mapper: func(ptr capnp.Ptr) domain.ServerMessage {
-					return connector.MapDTOToCommandMessage(connector.CommandPacket{Struct: ptr.Struct()})
-				},
-			})(params)
-		})
-		defer release()
-		_, err := answerCommand.Struct()
-		if err != nil {
-			panic(err)
-		}
-	}()
-	go func() {
-		answerMessage, release := c.connector.MessageStream(context.TODO(), func(params connector.Connector_messageStream_Params) error {
-			return streamParamSetter(&streamReceiver{
-				messageChan: c.messageChan,
-				mapper: func(ptr capnp.Ptr) domain.ServerMessage {
-					message := connector.MapDTOToChatMessage(connector.IncomingMessagePacket{Struct: ptr.Struct()})
-					return message
-				},
-			})(params)
-		})
-		defer release()
-		_, err := answerMessage.Struct()
-		if err != nil {
-			panic(err)
-		}
-	}()
-	go func() {
-		answerEvent, release := c.connector.EventStream(context.TODO(), func(params connector.Connector_eventStream_Params) error {
-			return streamParamSetter(&streamReceiver{
-				messageChan: c.messageChan,
-				mapper: func(ptr capnp.Ptr) domain.ServerMessage {
-					return connector.MapDTOToUserEvent(connector.UserPacket{Struct: ptr.Struct()})
-				},
-			})(params)
-		})
-		defer release()
-		_, err := answerEvent.Struct()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	//log.Println("capnpClient", "Recv", "end")
+	return message.(domain.ServerMessage), nil
 }
