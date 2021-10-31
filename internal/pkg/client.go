@@ -76,6 +76,11 @@ func (c *capnpClient) connect() error {
 	}
 	c.messageConsumer, err = messageQueue.NewConsumer()
 	rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Dispatcher_ServerToClient(&dispatcher{messageProducer: producer}, nil).Client})
+	go func() {
+		<-rpcConn.Done()
+		c.err = rpcConn.Close()
+		c.doneChan <- struct{}{}
+	}()
 	c.connector = connector.Connector{Client: rpcConn.Bootstrap(context.TODO())}
 	return nil
 }

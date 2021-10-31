@@ -59,7 +59,7 @@ func NewCapnpRelayServer(config interface{}) server.RelayServer {
 	return newCapnpRelayServer(conf)
 }
 
-func (c *capnpRelayServer) start() error {
+func (c *capnpRelayServer) start(ctx context.Context) error {
 	var listener net.Listener
 	var err error
 	listener, err = net.ListenTCP("tcp", &net.TCPAddr{
@@ -78,7 +78,7 @@ func (c *capnpRelayServer) start() error {
 		listener = tls.NewListener(listener, tlsConfig)
 	}
 	go func(listener net.Listener) {
-		for true {
+		for c.err == nil {
 			conn, err := listener.Accept()
 			if err != nil {
 				c.err = err
@@ -88,15 +88,19 @@ func (c *capnpRelayServer) start() error {
 			rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Connector_ServerToClient(c.connector, nil).Client})
 			c.dispatcher = connector.Dispatcher{Client: rpcConn.Bootstrap(context.TODO())}
 			go func() {
-				<-rpcConn.Done()
-				_ = rpcConn.Close()
+				select {
+				case <-ctx.Done():
+				case <-rpcConn.Done():
+				}
+				c.err = rpcConn.Close()
+				c.doneChan <- struct{}{}
 			}()
 		}
 	}(listener)
 	return nil
 }
 
-func (c *capnpRelayServer) Start(botUser *domain.User, onlineUsers domain.UserList, trigger string) error {
+func (c *capnpRelayServer) Start(ctx context.Context, botUser *domain.User, onlineUsers domain.UserList, trigger string) error {
 	c.connector.onRegistration = func(registration connector.RegistrationPacket, confirmation connector.ConfirmationPacket) error {
 		if c.err != nil {
 			return c.err
@@ -112,7 +116,7 @@ func (c *capnpRelayServer) Start(botUser *domain.User, onlineUsers domain.UserLi
 		}
 		return nil
 	}
-	err := c.start()
+	err := c.start(ctx)
 	if err != nil {
 		c.err = fmt.Errorf("start error: %v", err)
 		c.doneChan <- struct{}{}
