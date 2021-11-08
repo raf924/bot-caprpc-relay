@@ -8,13 +8,13 @@ import (
 	"github.com/raf924/connector-api/pkg/connector"
 )
 
-var _ connector.Dispatcher_Server = (*dispatcher)(nil)
+var _ connector.Dispatcher_Server = (*dispatcherServer)(nil)
 
-type dispatcher struct {
+type dispatcherServer struct {
 	messageProducer *queue.Producer
 }
 
-func (d *dispatcher) dispatch(ctx context.Context, packet interface{}, mapper func(packet interface{}) domain.ServerMessage) error {
+func (d *dispatcherServer) dispatch(ctx context.Context, packet interface{}, mapper func(packet interface{}) domain.ServerMessage) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -27,7 +27,7 @@ func (d *dispatcher) dispatch(ctx context.Context, packet interface{}, mapper fu
 	return nil
 }
 
-func (d *dispatcher) DispatchMessage(ctx context.Context, message connector.Dispatcher_dispatchMessage) error {
+func (d *dispatcherServer) DispatchMessage(ctx context.Context, message connector.Dispatcher_dispatchMessage) error {
 	message.Ack()
 	packet, err := message.Args().Message()
 	if err != nil {
@@ -38,7 +38,7 @@ func (d *dispatcher) DispatchMessage(ctx context.Context, message connector.Disp
 	})
 }
 
-func (d *dispatcher) DispatchCommand(ctx context.Context, command connector.Dispatcher_dispatchCommand) error {
+func (d *dispatcherServer) DispatchCommand(ctx context.Context, command connector.Dispatcher_dispatchCommand) error {
 	command.Ack()
 	packet, err := command.Args().Command()
 	if err != nil {
@@ -49,7 +49,7 @@ func (d *dispatcher) DispatchCommand(ctx context.Context, command connector.Disp
 	})
 }
 
-func (d *dispatcher) DispatchEvent(ctx context.Context, event connector.Dispatcher_dispatchEvent) error {
+func (d *dispatcherServer) DispatchEvent(ctx context.Context, event connector.Dispatcher_dispatchEvent) error {
 	event.Ack()
 	packet, err := event.Args().Event()
 	if err != nil {

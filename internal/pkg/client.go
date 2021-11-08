@@ -8,16 +8,16 @@ import (
 	"github.com/raf924/bot-caprpc-relay/pkg"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/bot/pkg/queue"
-	"github.com/raf924/bot/pkg/relay/client"
+	botRpc "github.com/raf924/bot/pkg/rpc"
 	"github.com/raf924/connector-api/pkg/connector"
 	"gopkg.in/yaml.v2"
 	"net"
 	"sync"
 )
 
-var _ client.RelayClient = (*capnpClient)(nil)
+var _ botRpc.DispatcherRelay = (*capnpDispatcherRelay)(nil)
 
-type capnpClient struct {
+type capnpDispatcherRelay struct {
 	config          pkg.CapnpClientConfig
 	connector       connector.Connector
 	messageConsumer *queue.Consumer
@@ -26,19 +26,19 @@ type capnpClient struct {
 	mu              *sync.Mutex
 }
 
-func (c *capnpClient) Done() <-chan struct{} {
+func (c *capnpDispatcherRelay) Done() <-chan struct{} {
 	return c.doneChan
 }
 
-func (c *capnpClient) Err() error {
+func (c *capnpDispatcherRelay) Err() error {
 	return c.err
 }
 
-func newCapnpClient(config pkg.CapnpClientConfig) *capnpClient {
-	return &capnpClient{config: config, doneChan: make(chan struct{}, 1), mu: &sync.Mutex{}}
+func newCapnpClient(config pkg.CapnpClientConfig) *capnpDispatcherRelay {
+	return &capnpDispatcherRelay{config: config, doneChan: make(chan struct{}, 1), mu: &sync.Mutex{}}
 }
 
-func NewCapnpClient(config interface{}) client.RelayClient {
+func NewCapnpClient(config interface{}) botRpc.DispatcherRelay {
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		panic(err)
@@ -50,7 +50,7 @@ func NewCapnpClient(config interface{}) client.RelayClient {
 	return newCapnpClient(conf)
 }
 
-func (c *capnpClient) connect() error {
+func (c *capnpDispatcherRelay) connect() error {
 	endpoint := fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 	var conn net.Conn
 	var err error
@@ -75,17 +75,27 @@ func (c *capnpClient) connect() error {
 		return err
 	}
 	c.messageConsumer, err = messageQueue.NewConsumer()
-	rpcConn := rpc.NewConn(rpc.NewStreamTransport(conn), &rpc.Options{BootstrapClient: connector.Dispatcher_ServerToClient(&dispatcher{messageProducer: producer}, nil).Client})
+	rpcConn := rpc.NewConn(
+		rpc.NewStreamTransport(conn),
+		&rpc.Options{
+			BootstrapClient: connector.Dispatcher_ServerToClient(
+				&dispatcherServer{messageProducer: producer},
+				nil,
+			).Client,
+		},
+	)
+	c.connector = connector.Connector{Client: rpcConn.Bootstrap(context.TODO())}
 	go func() {
-		<-rpcConn.Done()
+		select {
+		case <-rpcConn.Done():
+		}
 		c.err = rpcConn.Close()
 		c.doneChan <- struct{}{}
 	}()
-	c.connector = connector.Connector{Client: rpcConn.Bootstrap(context.TODO())}
 	return nil
 }
 
-func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
+func (c *capnpDispatcherRelay) register(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
 	answer, release := c.connector.Register(context.TODO(), func(params connector.Connector_register_Params) error {
 		registrationDTO, err := params.NewRegistration()
 		if err != nil {
@@ -113,8 +123,7 @@ func (c *capnpClient) register(registration *domain.RegistrationMessage) (*domai
 	return confirmation, err
 }
 
-func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
-	//log.Println("capnpClient", "Connect", "start")
+func (c *capnpDispatcherRelay) Connect(registration *domain.RegistrationMessage) (*domain.ConfirmationMessage, error) {
 	err := c.connect()
 	if err != nil {
 		return nil, err
@@ -125,12 +134,10 @@ func (c *capnpClient) Connect(registration *domain.RegistrationMessage) (*domain
 		c.doneChan <- struct{}{}
 		return nil, c.err
 	}
-	//log.Println("capnpClient", "Connect", "end")
 	return confirmation, nil
 }
 
-func (c *capnpClient) Send(packet *domain.ClientMessage) error {
-	//log.Println("capnpClient", "Send", "start")
+func (c *capnpDispatcherRelay) Send(packet *domain.ClientMessage) error {
 	answer, release := c.connector.Send(context.TODO(), func(params connector.Connector_send_Params) error {
 		message, err := params.NewMessage()
 		if err != nil {
@@ -140,7 +147,6 @@ func (c *capnpClient) Send(packet *domain.ClientMessage) error {
 		if err != nil {
 			return err
 		}
-		//log.Println("capnpClient", "Send", "rpc", message.Private())
 		return nil
 	})
 	_, err := answer.Struct()
@@ -148,16 +154,13 @@ func (c *capnpClient) Send(packet *domain.ClientMessage) error {
 	if err != nil {
 		return err
 	}
-	//log.Println("capnpClient", "Send", "end")
 	return nil
 }
 
-func (c *capnpClient) Recv() (domain.ServerMessage, error) {
-	//log.Println("capnpClient", "Recv", "start")
+func (c *capnpDispatcherRelay) Recv() (domain.ServerMessage, error) {
 	message, err := c.messageConsumer.Consume()
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch server messages")
 	}
-	//log.Println("capnpClient", "Recv", "end")
 	return message.(domain.ServerMessage), nil
 }

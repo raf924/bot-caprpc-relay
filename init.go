@@ -2,11 +2,10 @@ package bot_caprpc_relay
 
 import (
 	"github.com/raf924/bot-caprpc-relay/internal/pkg"
-	"github.com/raf924/bot/pkg/relay/client"
-	"github.com/raf924/bot/pkg/relay/server"
+	"github.com/raf924/bot/pkg/rpc"
 )
 
 func init() {
-	client.RegisterRelayClient("capnp", pkg.NewCapnpClient)
-	server.RegisterRelayServer("capnp", pkg.NewCapnpRelayServer)
+	rpc.RegisterDispatcherRelay("capnp", pkg.NewCapnpClient)
+	rpc.RegisterConnectorRelay("capnp", pkg.NewCapnpRelayServer)
 }
