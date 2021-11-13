@@ -11,7 +11,7 @@ import (
 var _ connector.Dispatcher_Server = (*dispatcherServer)(nil)
 
 type dispatcherServer struct {
-	messageProducer *queue.Producer
+	messageProducer queue.Producer
 }
 
 func (d *dispatcherServer) dispatch(ctx context.Context, packet interface{}, mapper func(packet interface{}) domain.ServerMessage) error {

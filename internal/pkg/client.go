@@ -20,7 +20,7 @@ var _ botRpc.DispatcherRelay = (*capnpDispatcherRelay)(nil)
 type capnpDispatcherRelay struct {
 	config          pkg.CapnpClientConfig
 	connector       connector.Connector
-	messageConsumer *queue.Consumer
+	messageConsumer queue.Consumer
 	err             error
 	doneChan        chan struct{}
 	mu              *sync.Mutex

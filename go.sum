@@ -3,8 +3,9 @@ capnproto.org/go/capnp/v3 v3.0.0-alpha.1/go.mod h1:izbWjXlvObqHwvhxwDBFLpY9lXSXI
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/philhofer/fwd v1.1.1 h1:GdGcTjf5RNAxwS4QLsiMzJYj5KEvPJD3Abr261yRQXQ=
 github.com/philhofer/fwd v1.1.1/go.mod h1:gk3iGcWd9+svBvR0sR+KPcfE+RNWozjowpeBVG3ZVNU=
-github.com/raf924/bot v1.0.1 h1:nDiBpF+2cNFd0wQILHrBSTGc2F0fkVYpenMy54K/8kM=
 github.com/raf924/bot v1.0.1/go.mod h1:lxzQsf5pfe4zxnvRmf+3tcuPb2f2m/7Bb8WoFir1u38=
+github.com/raf924/bot v1.0.4 h1:c0x2E5AFe+5YfsZmslKjyOhNyxjBCv/RerzPDdbO6/k=
+github.com/raf924/bot v1.0.4/go.mod h1:ooJyQ5HEjhFY59c2CCkZRgIlwFRmyBpFc2J5ZDb50AY=
 github.com/raf924/connector-api v1.0.0 h1:MlUMBOMI6fXUJd4XvFtZTpZBaKEdttHheeKcwP8/F54=
 github.com/raf924/connector-api v1.0.0/go.mod h1:xczyWZhddAWlquUXOpbV8HuHeSFrpZCBj6LOQkEs3p0=
 github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c=
