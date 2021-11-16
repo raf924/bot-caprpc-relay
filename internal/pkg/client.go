@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/jpillora/backoff"
 	"github.com/raf924/bot-caprpc-relay/pkg"
 	"github.com/raf924/bot/pkg/domain"
 	"github.com/raf924/bot/pkg/queue"
@@ -13,6 +14,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"net"
 	"sync"
+	"time"
 )
 
 var _ botRpc.DispatcherRelay = (*capnpDispatcherRelay)(nil)
@@ -50,24 +52,44 @@ func NewCapnpClient(config interface{}) botRpc.DispatcherRelay {
 	return newCapnpClient(conf)
 }
 
+func (c *capnpDispatcherRelay) dial(endpoint string) (net.Conn, error) {
+	if c.config.TLS.Enabled {
+		tlsConfig, err := LoadMTLSClientConfig(c.config.TLS.Name, c.config.TLS.Ca, c.config.TLS.Cert, c.config.TLS.Key)
+		if err != nil {
+			return nil, err
+		}
+		conn, err := tls.Dial("tcp", endpoint, tlsConfig)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	} else {
+		conn, err := net.Dial("tcp", endpoint)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+}
+
 func (c *capnpDispatcherRelay) connect() error {
 	endpoint := fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 	var conn net.Conn
 	var err error
-	if c.config.TLS.Enabled {
-		tlsConfig, err := LoadMTLSClientConfig(c.config.TLS.Name, c.config.TLS.Ca, c.config.TLS.Cert, c.config.TLS.Key)
+	connBackoff := backoff.Backoff{
+		Jitter: true,
+		Max:    30 * time.Second,
+	}
+	for connBackoff.Attempt() < 5 {
+		conn, err = c.dial(endpoint)
 		if err != nil {
-			return err
+			time.Sleep(connBackoff.Duration())
+			continue
 		}
-		conn, err = tls.Dial("tcp", endpoint, tlsConfig)
-		if err != nil {
-			return err
-		}
-	} else {
-		conn, err = net.Dial("tcp", endpoint)
-		if err != nil {
-			return err
-		}
+		break
+	}
+	if err != nil {
+		return err
 	}
 	messageQueue := queue.NewQueue()
 	producer, err := messageQueue.NewProducer()

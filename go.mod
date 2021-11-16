@@ -9,4 +9,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-require github.com/segmentio/ksuid v1.0.4 // indirect
+require (
+	github.com/jpillora/backoff v1.0.0 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
+)
