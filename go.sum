@@ -3,11 +3,11 @@ capnproto.org/go/capnp/v3 v3.0.0-alpha.1/go.mod h1:izbWjXlvObqHwvhxwDBFLpY9lXSXI
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/philhofer/fwd v1.1.1 h1:GdGcTjf5RNAxwS4QLsiMzJYj5KEvPJD3Abr261yRQXQ=
 github.com/philhofer/fwd v1.1.1/go.mod h1:gk3iGcWd9+svBvR0sR+KPcfE+RNWozjowpeBVG3ZVNU=
-github.com/raf924/bot v1.0.1/go.mod h1:lxzQsf5pfe4zxnvRmf+3tcuPb2f2m/7Bb8WoFir1u38=
-github.com/raf924/bot v1.0.4 h1:c0x2E5AFe+5YfsZmslKjyOhNyxjBCv/RerzPDdbO6/k=
-github.com/raf924/bot v1.0.4/go.mod h1:ooJyQ5HEjhFY59c2CCkZRgIlwFRmyBpFc2J5ZDb50AY=
-github.com/raf924/connector-api v1.0.0 h1:MlUMBOMI6fXUJd4XvFtZTpZBaKEdttHheeKcwP8/F54=
-github.com/raf924/connector-api v1.0.0/go.mod h1:xczyWZhddAWlquUXOpbV8HuHeSFrpZCBj6LOQkEs3p0=
+github.com/raf924/bot v1.0.5/go.mod h1:ooJyQ5HEjhFY59c2CCkZRgIlwFRmyBpFc2J5ZDb50AY=
+github.com/raf924/bot v1.0.6 h1:N0oWH1pnJ9LfI2DUh8UjjQw4fAlRuw/WKXF0s88WwWA=
+github.com/raf924/bot v1.0.6/go.mod h1:ooJyQ5HEjhFY59c2CCkZRgIlwFRmyBpFc2J5ZDb50AY=
+github.com/raf924/connector-api v1.0.1 h1:w/EucMExb/0PX6whuHW10r/NxDZSHNIQR28r7uRkuCo=
+github.com/raf924/connector-api v1.0.1/go.mod h1:E8FVtFUpmM4BS/vI144FNXeD1JUamxgfCah/4Pg9kpk=
 github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c=
 github.com/segmentio/ksuid v1.0.4/go.mod h1:/XUiZBD3kVx5SmUOl55voK5yeAbBNNIed+2O73XgrPE=
 github.com/tinylib/msgp v1.1.5 h1:2gXmtWueD2HefZHQe1QOy9HVzmFrLOVvsXwXBQ0ayy0=
