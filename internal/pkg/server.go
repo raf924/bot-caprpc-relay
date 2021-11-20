@@ -63,7 +63,12 @@ func (d *dispatcher) Dispatch(message domain.ServerMessage) error {
 	}
 	releaseFunc, err := dispatch(d.duplex, message)
 	releaseFunc()
-	return fmt.Errorf("cannot dispatch: %v", err)
+	if err != nil {
+		d.err = fmt.Errorf("cannot dispatch: %v", err)
+		_ = d.duplex.conn.Close()
+		return d.err
+	}
+	return nil
 }
 
 func (d *dispatcher) Commands() domain.CommandList {
