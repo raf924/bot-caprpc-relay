@@ -47,7 +47,7 @@ type dispatcher struct {
 
 func (d *dispatcher) Dispatch(message domain.ServerMessage) error {
 	if d.err != nil {
-		return fmt.Errorf("cannot dispatch: %v", d.err)
+		return fmt.Errorf("cannot dispatch: dispatcher in error: %v", d.err)
 	}
 	var err error
 	var dispatch dispatchFunc
@@ -64,7 +64,7 @@ func (d *dispatcher) Dispatch(message domain.ServerMessage) error {
 	releaseFunc, err := dispatch(d.duplex, message)
 	releaseFunc()
 	if err != nil {
-		d.err = fmt.Errorf("cannot dispatch: %v", err)
+		d.err = fmt.Errorf("cannot dispatch: failed to dispatch: %v", err)
 		_ = d.duplex.conn.Close()
 		return d.err
 	}
@@ -121,6 +121,7 @@ func (c *capnpConnectorRelay) Accept() (botRpc.Dispatcher, error) {
 	duplex.rpcConn = rpcConn
 	duplex.dispatcher = connector.Dispatcher{Client: rpcConn.Bootstrap(context.TODO())}
 	return &dispatcher{
+		err:      nil,
 		duplex:   duplex,
 		commands: (<-registrationChan).(domain.CommandList),
 	}, nil
