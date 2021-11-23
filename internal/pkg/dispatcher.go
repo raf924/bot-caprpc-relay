@@ -3,9 +3,9 @@ package pkg
 import (
 	"context"
 	"fmt"
-	"github.com/raf924/bot/pkg/domain"
-	"github.com/raf924/bot/pkg/queue"
-	"github.com/raf924/connector-api/pkg/connector"
+	"github.com/raf924/connector-api/v2/pkg/connector"
+	"github.com/raf924/connector-sdk/domain"
+	"github.com/raf924/connector-sdk/queue"
 )
 
 var _ connector.Dispatcher_Server = (*dispatcherServer)(nil)

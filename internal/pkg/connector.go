@@ -2,8 +2,8 @@ package pkg
 
 import (
 	"context"
-	"github.com/raf924/bot/pkg/domain"
-	"github.com/raf924/connector-api/pkg/connector"
+	"github.com/raf924/connector-api/v2/pkg/connector"
+	"github.com/raf924/connector-sdk/domain"
 )
 
 type connectorImpl struct {
@@ -26,7 +26,7 @@ func NewConnector(
 	}
 }
 
-func (c *connectorImpl) Register(ctx context.Context, register connector.Connector_register) error {
+func (c *connectorImpl) Register(_ context.Context, register connector.Connector_register) error {
 	register.Ack()
 	registration, err := register.Args().Registration()
 	if err != nil {
@@ -44,7 +44,7 @@ func (c *connectorImpl) Register(ctx context.Context, register connector.Connect
 	return err
 }
 
-func (c *connectorImpl) Send(ctx context.Context, send connector.Connector_send) error {
+func (c *connectorImpl) Send(_ context.Context, send connector.Connector_send) error {
 	send.Ack()
 	message, err := send.Args().Message()
 	if err != nil {
